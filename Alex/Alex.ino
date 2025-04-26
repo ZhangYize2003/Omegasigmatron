@@ -15,39 +15,16 @@
 #define SENSOR_DELAY 20
 
 /*
- * Alex's configuration constants
+ * Alex's State Variables For Colour Sensor and Claw
  */
-
-// Speed of Alex at 100% power in cm/s
-#define SPEED 55.0
-
-// Angular speed of Alex at 100% power in degree/s
-#define ANGULAR_SPEED 4.0
-
-// Wheel circumference in cm.
-// We will use this to calculate forward/backward distance traveled 
-// by taking revs * WHEEL_CIRC
-
-#define WHEEL_CIRC 19.48
-
-// Alex's length and breadth in cm
-#define ALEX_LENGTH 25
-#define ALEX_BREADTH 16
-
-// Alex's diagonal
-float alexDiagonal = 0.0;
-
-// Alex's turning circumference
-float alexCirc = 0.0;
-
 volatile unsigned long redFreq = 0;
 volatile unsigned long greenFreq = 0;
 volatile unsigned long blueFreq = 0;
 volatile int is_open = 0;
-/*
- *    Alex's State Variables
- */
 
+/*
+ * Alex's State Variables For Movement
+ */
 volatile int gear = 1;
 float gearTime = 0;
 float moveStartTime = 0;
@@ -61,12 +38,11 @@ void right() {
   cw();
 }
 
-/*
+/**
  * 
  * Alex Communication Routines.
  * 
  */
- 
 TResult readPacket(TPacket *packet)
 {
     // Reads in data from the serial port and
@@ -81,8 +57,7 @@ TResult readPacket(TPacket *packet)
     if(len == 0)
       return PACKET_INCOMPLETE;
     else
-      return deserialize(buffer, len, packet);
-    
+      return deserialize(buffer, len, packet);   
 }
 
 void sendMessage(const char *message)
@@ -165,13 +140,23 @@ void sendResponse(TPacket *packet)
   writeSerial(buffer, len);
 }
 
-/*
- * Setup and start codes for external interrupts and 
- * pullup resistors.
- * 
- */
+void sendColour() {
+  TPacket colourPacket;
 
-// Functions to be called by INT2 and INT3 ISRs.
+  colourPacket.packetType = PACKET_TYPE_RESPONSE;
+  colourPacket.command = RESP_COLOUR;
+  colourPacket.params[0] = redFreq;
+  colourPacket.params[1] = greenFreq;
+  colourPacket.params[2] = blueFreq;
+
+  sendResponse(&colourPacket);
+}
+
+/**
+ * Sets up Timer 5 ISR to open/close the claw using PWM.
+ * open: a = 1500, b = 400.
+ * close: a = 400, b = 1500.
+ */
 void clawISR()
 {
   DDRL |= (1 << PL3) | (1 << PL4);
@@ -191,18 +176,11 @@ void clawISR()
     is_open = !is_open;
     dbprintf("Claw is now *CLOSED*\n");
   }
-  
-  //open : a:1500, b:400
-  //close : a:400, b:1500
 }
 
 /*
- * Setup and start codes for serial communications
- * 
+ * Setup and start codes for serial communications using bare-metal code
  */
-// Set up the serial connection. For now we are using 
-// Arduino Wiring, you will replace this later
-// with bare-metal code.
 void setupSerial()
 {
   PRR0 &= ~(1 << PRUSART0);
@@ -210,36 +188,31 @@ void setupSerial()
   UBRR0L = 103; // 103 for 9600baud
   UCSR0C = (1 << UCSZ01) | (1 << UCSZ00); // Asynchronous USART Mode
   UCSR0A = 0; // Clear the bits of UCSR0A while setting up
-
-  // Serial.begin(9600);
-  // Change Serial to Serial2/Serial3/Serial4 in later labs when using the other UARTs
 }
 
-// Start the serial connection. For now we are using
-// Arduino wiring and this function is empty. We will
-// replace this later with bare-metal code.
-
+/*
+ * Initialises the USART communication by enabling the receiver,
+ * transmitter, and RX complete interrupt on USART0.
+ */
 void startSerial()
 {
-  // Empty for now. To be replaced with bare-metal code
-  // later on.
   // Enable receiver and transmitter
   UCSR0B = (1 << RXEN0) | (1 << TXEN0);
 
   // Enable RX complete interrupt
   UCSR0B |= (1 << RXCIE0);
-  }
+}
 
-// Read the serial port. Returns the read character in
-// ch if available. Also returns TRUE if ch is valid. 
-// This will be replaced later with bare-metal code.
-
+/**
+ * Read the serial port. Returns the number of characters read into buffer.
+ *
+ * @param [in] buffer Pointer to a character array where the incoming serial data will be stored.
+ *
+ * @return The number of characters successfully read from the serial port.
+ */
 int readSerial(char *buffer)
 {
-
   int count=0;
-
-  // Change Serial to Serial2/Serial3/Serial4 in later labs when using other UARTs
 
   while(Serial.available())
     buffer[count++] = Serial.read();
@@ -247,96 +220,107 @@ int readSerial(char *buffer)
   return count;
 }
 
-// Write to the serial port. Replaced later with
-// bare-metal code
-
+/**
+ * Write data to the serial port, sending each byte from the given buffer.
+ * 
+ * @param[in] buffer Pointer to the character array containing data to send.
+ * @param[in] len Number of bytes to send from the buffer.
+ */
 void writeSerial(const char *buffer, int len)
 {
-  // See if need to change
   for (int i = 0; i < len; i++) {
     while (!(UCSR0A & (1 << UDRE0)));
     UDR0 = buffer[i]; // write each byte of the buffer
   }
-  // Change Serial to Serial2/Serial3/Serial4 in later labs when using other UARTs
 }
 
-/*
-void sendColour() {
-  //Obtain the distance the colour values were taken from
-  
-  TPacket colourPacket;
-  colourPacket.packetType = PACKET_TYPE_RESPONSE;
-  colourPacket.command = RESP_COLOUR;
-  colourPacket.params[0] = redFreq;
-  colourPacket.params[1] = greenFreq;
-  colourPacket.params[2] = blueFreq;
-  sendResponse(&colourPacket);
-}
-*/
-
+/**
+ * Configure the color sensor pins by setting up S0, S1, S2, S3 to OUTPUT,
+ * sensorOut to INPUT and initialising the frequency scaling to 20%.
+ */
 void colourSetup() {
   DDRA |= ((1 << S0) | (1 << S1) | (1 << S2) | (1 << S3)); //Set S0, S1, S2, S3 to OUTPUT
   DDRA &= ~(1 << SENSOR_OUTPUT); //Set sensorOut to INPUT
-  
-  //Setting frequency scaling to 20%
   PORTA |= (1 << S0);
   PORTA &= ~(1 << S1);
 }
 
+/**
+ * Calculates the average pulse duration from a digital colour sensor by
+ * reading the duration of pulses 5 times.
+ *
+ * @return The average pulse duration over 5 readings.
+ */
 int avgFreq() {
   int reading;
   int total = 0;
 
-  //Obtain 5 readings
   for (int i = 0; i < 5; i++) {
     reading = pulseIn(SENSOR_OUTPUT_PIN, LOW);
     total += reading;
     delay(SENSOR_DELAY);
   }
-  //Return the average of 5 readings
   return total / 5;
 }
 
+/**
+ * Measures and stores the output corresponding to the red component of 
+ * light detected by the colour sensor. It changes the logic of S2 and S3
+ * pins to read the red photodiode.
+ */
 void senseRed() {
-  // Setting RED filtered photodiodes to be read
   PORTA &= ~((1 << S2) | (1 << S3)); 
   delay(SENSOR_DELAY);
 
-  // Reading the output frequency for RED
   redFreq = avgFreq();
   delay(SENSOR_DELAY);
   dbprintf("Red frequency: %ld", redFreq);
 }
 
+/**
+ * Measures and stores the output corresponding to the green component of 
+ * light detected by the colour sensor. It changes the logic of S2 and S3
+ * pins to read the green photodiode.
+ */
 void senseGreen() {
-  // Setting GREEN filtered photodiodes to be read
   PORTA |= ((1 << S2) | (1 << S3));
   delay(SENSOR_DELAY);
 
-  // Reading the output frequency for GREEN
   greenFreq = avgFreq();
   delay(SENSOR_DELAY);
   dbprintf("Green frequency: %ld", greenFreq);
 }
 
+/**
+ * Measures and stores the output corresponding to the blue component of 
+ * light detected by the colour sensor. It changes the logic of S2 and S3
+ * pins to read the blue photodiode.
+ */
 void senseBlue() {
-  // Setting BLUE filtered photodiodes to be read
   PORTA &= ~(1 << S2);
   PORTA |= (1 << S3);
   delay(SENSOR_DELAY);
 
-  // Reading the output frequency for BLUE
   blueFreq = avgFreq();
   delay(SENSOR_DELAY);
   dbprintf("Blue frequency: %ld", blueFreq);
 }
 
+/**
+ * Measures the output corresponding to all components of 
+ * light detected by the colour sensor
+ */
 void senseColour() { 
   senseRed();
   senseGreen();
   senseBlue();
 }
 
+/**
+ * This function determines the color detected by the color sensor based on red 
+ * and green frequency readings, and prints the corresponding result. The threshhold
+ * frequencies are derived experimentally in the lab.
+ */
 void findColour() {
   if (is_open) {
     if (redFreq <= 150 && greenFreq >= 150) {
@@ -362,6 +346,11 @@ void findColour() {
   }
 }
 
+/**
+ * Sets the gearTime variable based on the selected gear level.
+ * 
+ * @param [in] gear An integer representing the current gear level.
+ */
 double findGearTime(int gear) {
   switch (gear)
   {
@@ -381,16 +370,15 @@ double findGearTime(int gear) {
       gearTime = 0;
   }
 }
-/*
- * Alex's setup and run codes
- * 
- */
 
+/*
+ * Alex's setup and movement codes
+ */
 void handleCommand(TPacket *command)
 {
   switch(command->command)
   {
-    // For movement commands, param[0] = distance, param[1] = speed.
+    // For movement commands, the default speed is at 100% power.
     case COMMAND_FORWARD:
         sendOK();
         findGearTime(gear);
@@ -439,23 +427,20 @@ void handleCommand(TPacket *command)
         sendOK();
         senseColour();
         findColour();
-        //sendColour();
+        sendColour();
       break;
     case COMMAND_CLAW:
         sendOK();
         clawISR();
-      break;
-
-    /*
-     * Implement code for other commands here.
-     * 
-     */
-        
+      break;      
     default:
       sendBadCommand();
   }
 }
 
+/**
+ * Waits for a valid HELLO packet to be received from the communication channel.
+ */
 void waitForHello()
 {
   int exit=0;
@@ -488,14 +473,10 @@ void waitForHello()
       else
         if(result == PACKET_CHECKSUM_BAD)
           sendBadChecksum();
-  } // !exit
+  }
 }
 
 void setup() {
-  // put your setup code here, to run once:
-  alexDiagonal = sqrt((ALEX_LENGTH * ALEX_LENGTH) + (ALEX_BREADTH * ALEX_BREADTH));
-  alexCirc = PI * alexDiagonal;
-
   cli();
   setupSerial();
   startSerial();
@@ -503,6 +484,9 @@ void setup() {
   sei();
 }
 
+/**
+ * Handles an incoming packet based on its type.
+ */
 void handlePacket(TPacket *packet)
 {
   switch(packet->packetType)
@@ -525,16 +509,12 @@ void handlePacket(TPacket *packet)
   }
 }
 
-void loop() {
-// Uncomment the code below for Step 2 of Activity 3 in Week 8 Studio 2
-
-//forward(0, 100);
-
-// Uncomment the code below for Week 9 Studio 2
-
-
- // put your main code here, to run repeatedly:
-  
+/**
+ * Main loop  that continuously stores incoming packets as results and
+ * manages robot movement based on duration and direction.
+ * Alex stops moving when the duration of movement exceeds gearTime.
+ */
+void loop() { 
   TPacket recvPacket; // This holds commands from the Pi
 
   TResult result = readPacket(&recvPacket);

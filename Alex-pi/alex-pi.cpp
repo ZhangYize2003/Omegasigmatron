@@ -31,33 +31,11 @@ void handleError(TResult error)
 	}
 }
 
-void handleStatus(TPacket *packet)
-{
-	printf("\n ------- ALEX STATUS REPORT ------- \n\n");
-	printf("Left Forward Ticks:\t\t%d\n", packet->params[0]);
-	printf("Right Forward Ticks:\t\t%d\n", packet->params[1]);
-	printf("Left Reverse Ticks:\t\t%d\n", packet->params[2]);
-	printf("Right Reverse Ticks:\t\t%d\n", packet->params[3]);
-	printf("Left Forward Ticks Turns:\t%d\n", packet->params[4]);
-	printf("Right Forward Ticks Turns:\t%d\n", packet->params[5]);
-	printf("Left Reverse Ticks Turns:\t%d\n", packet->params[6]);
-	printf("Right Reverse Ticks Turns:\t%d\n", packet->params[7]);
-	printf("Forward Distance:\t\t%d\n", packet->params[8]);
-	printf("Reverse Distance:\t\t%d\n", packet->params[9]);
-	printf("\n---------------------------------------\n\n");
-}
-
-/*
 void handleColour(TPacket *packet) {
-	printf("Red:\t\t%d\n", packet->params[0]);
-	printf("Green:\t\t%d\n", packet->params[1]);
-	printf("Blue:\t\t%d\n", packet->params[2]);
+	printf("R:\t\t%d\n", packet->params[0]);
+	printf("G:\t\t%d\n", packet->params[1]);
+	printf("B:\t\t%d\n", packet->params[2]);
 }
-
-void handleClaw(TPacket *packet) {
-	printf("All done chief\n");
-}
-*/
 
 void handleResponse(TPacket *packet)
 {
@@ -68,15 +46,8 @@ void handleResponse(TPacket *packet)
 			printf("Command OK\n");
 		break;
 
-		case RESP_STATUS:
-			handleStatus(packet);
-		break;
-
 		case RESP_COLOUR:
 			handleColour(packet);
-
-		case RESP_CLAW:
-			handleClaw(packet);
 
 		default:
 			printf("Arduino is confused\n");
@@ -182,16 +153,6 @@ void flushInput()
 	while((c = getchar()) != '\n' && c != EOF);
 }
 
-/*
-void getParams(TPacket *commandPacket)
-{
-	printf("Enter distance/angle in cm/degrees (e.g. 50) and power in %% (e.g. 75) separated by space.\n");
-	printf("E.g. 50 75 means go at 50 cm at 75%% power for forward/backward, or 50 degrees left or right turn at 75%%  power\n");
-	scanf("%d %d", &commandPacket->params[0], &commandPacket->params[1]);
-	flushInput();
-}
-*/
-
 void sendCommand(char command)
 {
 	TPacket commandPacket;
@@ -269,7 +230,6 @@ void sendCommand(char command)
 
 		default:
 			printf("Bad command\n");
-
 	}
 }
 

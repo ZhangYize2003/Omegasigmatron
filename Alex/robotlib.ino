@@ -54,6 +54,10 @@ void move(int direction)
     }
 }
 
+/*
+ * Alex's movement commands. The start time of the movement is stored
+ * using the millis() function.
+ */
 void forward()
 {
   moveStartTime = millis();
